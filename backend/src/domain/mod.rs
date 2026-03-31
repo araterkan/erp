@@ -1,0 +1,9 @@
+pub mod auth;
+pub mod finance;
+pub mod stock;
+pub mod hr;
+pub mod crm;
+pub mod bank;
+pub mod cash;
+pub mod invoice;
+pub mod report;
