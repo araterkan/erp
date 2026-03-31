@@ -1,2 +1,0 @@
-fn(axum::extract::State<AppState>, axum::extract::Path<Uuid>, axum::Json<UpdateUserRequest>) -> impl std::future::Future<Output = Result<impl IntoResponse, AppError>> {update_user}
-fn(axum::extract::State<AppState>, axum::extract::Path<Uuid>, axum::Json<UpdateUserRequest>) -> impl std::future::Future<Output = Result<impl IntoResponse, AppError>> {update_user}: Handler<_, _>
