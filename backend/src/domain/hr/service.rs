@@ -8,9 +8,9 @@ pub struct HrService;
 impl HrService {
     pub async fn list_departments(pool: &DbPool) -> AppResult<Vec<Department>> {
         let client = pool.get().await?;
-        let rows = client.query("SELECT id, name, code, parent_id, created_at FROM departments ORDER BY name", &[]).await?;
+        let rows = client.query("SELECT id, name, parent_id, created_at FROM departments ORDER BY name", &[]).await?;
         Ok(rows.iter().map(|r| Department {
-            id: r.get("id"), name: r.get("name"), code: r.get("code"),
+            id: r.get("id"), name: r.get("name"),
             parent_id: r.get("parent_id"), created_at: r.get("created_at"),
         }).collect())
     }
@@ -18,12 +18,12 @@ impl HrService {
     pub async fn create_department(pool: &DbPool, req: &CreateDepartmentRequest) -> AppResult<Department> {
         let client = pool.get().await?;
         let row = client.query_one(
-            "INSERT INTO departments (name, code, parent_id) VALUES ($1, $2, $3)
-             RETURNING id, name, code, parent_id, created_at",
-            &[&req.name, &req.code, &req.parent_id],
+            "INSERT INTO departments (name, parent_id) VALUES ($1, $2)
+             RETURNING id, name, parent_id, created_at",
+            &[&req.name, &req.parent_id],
         ).await?;
         Ok(Department {
-            id: row.get("id"), name: row.get("name"), code: row.get("code"),
+            id: row.get("id"), name: row.get("name"),
             parent_id: row.get("parent_id"), created_at: row.get("created_at"),
         })
     }
@@ -31,42 +31,40 @@ impl HrService {
     pub async fn list_employees(pool: &DbPool) -> AppResult<Vec<Employee>> {
         let client = pool.get().await?;
         let rows = client.query(
-            "SELECT id, employee_number, user_id, first_name, last_name, email, phone,
-                    department_id, position, hire_date, termination_date, base_salary, is_active, created_at, updated_at
+            "SELECT id, employee_no, user_id, first_name, last_name,
+                    department_id, position_id, hire_date, termination_date,
+                    base_salary::FLOAT8 as base_salary, is_active, created_at
              FROM employees ORDER BY last_name, first_name",
             &[],
         ).await?;
         Ok(rows.iter().map(|r| Employee {
-            id: r.get("id"), employee_number: r.get("employee_number"),
+            id: r.get("id"), employee_no: r.get("employee_no"),
             user_id: r.get("user_id"), first_name: r.get("first_name"),
-            last_name: r.get("last_name"), email: r.get("email"),
-            phone: r.get("phone"), department_id: r.get("department_id"),
-            position: r.get("position"), hire_date: r.get("hire_date"),
+            last_name: r.get("last_name"), department_id: r.get("department_id"),
+            position_id: r.get("position_id"), hire_date: r.get("hire_date"),
             termination_date: r.get("termination_date"),
-            base_salary: r.get::<_, Option<f64>>("base_salary"),
-            is_active: r.get("is_active"),
-            created_at: r.get("created_at"), updated_at: r.get("updated_at"),
+            base_salary: r.get::<_, f64>("base_salary"),
+            is_active: r.get("is_active"), created_at: r.get("created_at"),
         }).collect())
     }
 
     pub async fn get_employee(pool: &DbPool, id: Uuid) -> AppResult<Employee> {
         let client = pool.get().await?;
         let row = client.query_opt(
-            "SELECT id, employee_number, user_id, first_name, last_name, email, phone,
-                    department_id, position, hire_date, termination_date, base_salary, is_active, created_at, updated_at
+            "SELECT id, employee_no, user_id, first_name, last_name,
+                    department_id, position_id, hire_date, termination_date,
+                    base_salary::FLOAT8 as base_salary, is_active, created_at
              FROM employees WHERE id = $1",
             &[&id],
         ).await?.ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
         Ok(Employee {
-            id: row.get("id"), employee_number: row.get("employee_number"),
+            id: row.get("id"), employee_no: row.get("employee_no"),
             user_id: row.get("user_id"), first_name: row.get("first_name"),
-            last_name: row.get("last_name"), email: row.get("email"),
-            phone: row.get("phone"), department_id: row.get("department_id"),
-            position: row.get("position"), hire_date: row.get("hire_date"),
+            last_name: row.get("last_name"), department_id: row.get("department_id"),
+            position_id: row.get("position_id"), hire_date: row.get("hire_date"),
             termination_date: row.get("termination_date"),
-            base_salary: row.get::<_, Option<f64>>("base_salary"),
-            is_active: row.get("is_active"),
-            created_at: row.get("created_at"), updated_at: row.get("updated_at"),
+            base_salary: row.get::<_, f64>("base_salary"),
+            is_active: row.get("is_active"), created_at: row.get("created_at"),
         })
     }
 
@@ -74,126 +72,108 @@ impl HrService {
         let client = pool.get().await?;
         let count_row = client.query_one("SELECT COUNT(*) + 1 as num FROM employees", &[]).await?;
         let num: i64 = count_row.get("num");
-        let emp_num = format!("EMP-{:06}", num);
+        let emp_no = format!("EMP-{:06}", num);
+        let base_salary = req.base_salary.unwrap_or(0.0);
 
         let row = client.query_one(
-            "INSERT INTO employees (employee_number, first_name, last_name, email, phone, department_id, position, hire_date, base_salary)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             RETURNING id, employee_number, user_id, first_name, last_name, email, phone,
-                       department_id, position, hire_date, termination_date, base_salary, is_active, created_at, updated_at",
-            &[&emp_num, &req.first_name, &req.last_name, &req.email, &req.phone,
-              &req.department_id, &req.position, &req.hire_date, &req.base_salary],
+            "INSERT INTO employees (employee_no, first_name, last_name, department_id, position_id, hire_date, base_salary)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, employee_no, user_id, first_name, last_name,
+                       department_id, position_id, hire_date, termination_date,
+                       base_salary::FLOAT8 as base_salary, is_active, created_at",
+            &[&emp_no, &req.first_name, &req.last_name,
+              &req.department_id, &req.position_id, &req.hire_date, &base_salary],
         ).await?;
         Ok(Employee {
-            id: row.get("id"), employee_number: row.get("employee_number"),
+            id: row.get("id"), employee_no: row.get("employee_no"),
             user_id: row.get("user_id"), first_name: row.get("first_name"),
-            last_name: row.get("last_name"), email: row.get("email"),
-            phone: row.get("phone"), department_id: row.get("department_id"),
-            position: row.get("position"), hire_date: row.get("hire_date"),
+            last_name: row.get("last_name"), department_id: row.get("department_id"),
+            position_id: row.get("position_id"), hire_date: row.get("hire_date"),
             termination_date: row.get("termination_date"),
-            base_salary: row.get::<_, Option<f64>>("base_salary"),
-            is_active: row.get("is_active"),
-            created_at: row.get("created_at"), updated_at: row.get("updated_at"),
+            base_salary: row.get::<_, f64>("base_salary"),
+            is_active: row.get("is_active"), created_at: row.get("created_at"),
         })
     }
 
     pub async fn list_leave_requests(pool: &DbPool) -> AppResult<Vec<LeaveRequest>> {
         let client = pool.get().await?;
         let rows = client.query(
-            "SELECT id, employee_id, leave_type, start_date, end_date, days_count, reason, status, approved_by, created_at, updated_at
+            "SELECT id, employee_id, leave_type::TEXT, start_date, end_date,
+                    days::FLOAT8 as days, reason, status::TEXT, approved_by, created_at
              FROM leave_requests ORDER BY created_at DESC",
             &[],
         ).await?;
         Ok(rows.iter().map(|r| LeaveRequest {
             id: r.get("id"), employee_id: r.get("employee_id"),
             leave_type: r.get("leave_type"), start_date: r.get("start_date"),
-            end_date: r.get("end_date"), days_count: r.get::<_, f64>("days_count"),
+            end_date: r.get("end_date"), days: r.get::<_, f64>("days"),
             reason: r.get("reason"), status: r.get("status"),
-            approved_by: r.get("approved_by"),
-            created_at: r.get("created_at"), updated_at: r.get("updated_at"),
+            approved_by: r.get("approved_by"), created_at: r.get("created_at"),
         }).collect())
     }
 
     pub async fn create_leave_request(pool: &DbPool, req: &CreateLeaveRequest) -> AppResult<LeaveRequest> {
         let client = pool.get().await?;
         let row = client.query_one(
-            "INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, days_count, reason)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING id, employee_id, leave_type, start_date, end_date, days_count, reason, status, approved_by, created_at, updated_at",
-            &[&req.employee_id, &req.leave_type, &req.start_date, &req.end_date, &req.days_count, &req.reason],
+            "INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, days, reason)
+             VALUES ($1, $2::leave_type, $3, $4, $5, $6)
+             RETURNING id, employee_id, leave_type::TEXT, start_date, end_date,
+                       days::FLOAT8 as days, reason, status::TEXT, approved_by, created_at",
+            &[&req.employee_id, &req.leave_type, &req.start_date, &req.end_date, &req.days, &req.reason],
         ).await?;
         Ok(LeaveRequest {
             id: row.get("id"), employee_id: row.get("employee_id"),
             leave_type: row.get("leave_type"), start_date: row.get("start_date"),
-            end_date: row.get("end_date"), days_count: row.get::<_, f64>("days_count"),
+            end_date: row.get("end_date"), days: row.get::<_, f64>("days"),
             reason: row.get("reason"), status: row.get("status"),
-            approved_by: row.get("approved_by"),
-            created_at: row.get("created_at"), updated_at: row.get("updated_at"),
+            approved_by: row.get("approved_by"), created_at: row.get("created_at"),
         })
     }
 
-    pub async fn list_payroll_runs(pool: &DbPool) -> AppResult<Vec<PayrollRun>> {
+    pub async fn list_payroll(pool: &DbPool) -> AppResult<Vec<PayrollRecord>> {
         let client = pool.get().await?;
         let rows = client.query(
-            "SELECT id, period_start, period_end, status, total_gross, total_deductions, total_net, created_by, created_at, updated_at
-             FROM payroll_runs ORDER BY period_start DESC",
+            "SELECT id, employee_id, period_year, period_month,
+                    gross_salary::FLOAT8 as gross_salary, net_salary::FLOAT8 as net_salary,
+                    status::TEXT, created_at
+             FROM payroll ORDER BY period_year DESC, period_month DESC LIMIT 100",
             &[],
         ).await?;
-        Ok(rows.iter().map(|r| PayrollRun {
-            id: r.get("id"), period_start: r.get("period_start"),
-            period_end: r.get("period_end"), status: r.get("status"),
-            total_gross: r.get::<_, f64>("total_gross"),
-            total_deductions: r.get::<_, f64>("total_deductions"),
-            total_net: r.get::<_, f64>("total_net"),
-            created_by: r.get("created_by"),
-            created_at: r.get("created_at"), updated_at: r.get("updated_at"),
+        Ok(rows.iter().map(|r| PayrollRecord {
+            id: r.get("id"), employee_id: r.get("employee_id"),
+            period_year: r.get("period_year"), period_month: r.get("period_month"),
+            gross_salary: r.get::<_, f64>("gross_salary"),
+            net_salary: r.get::<_, f64>("net_salary"),
+            status: r.get("status"), created_at: r.get("created_at"),
         }).collect())
     }
 
-    pub async fn create_payroll_run(pool: &DbPool, req: &CreatePayrollRunRequest, user_id: Uuid) -> AppResult<PayrollRun> {
-        let mut client = pool.get().await?;
-        let tx = client.transaction().await?;
+    pub async fn create_payroll(pool: &DbPool, req: &CreatePayrollRequest) -> AppResult<PayrollRecord> {
+        let client = pool.get().await?;
+        let gross = req.gross_salary;
+        let bonuses = req.bonuses.unwrap_or(0.0);
+        let deductions = req.deductions.unwrap_or(0.0);
+        let ssk_employee = gross * 0.14;
+        let income_tax = (gross + bonuses - deductions) * 0.15;
+        let stamp_tax = (gross + bonuses) * 0.00759;
+        let net = gross + bonuses - deductions - ssk_employee - income_tax - stamp_tax;
 
-        let employees = tx.query(
-            "SELECT id, base_salary FROM employees WHERE is_active = true AND base_salary IS NOT NULL", &[],
+        let row = client.query_one(
+            "INSERT INTO payroll (employee_id, period_year, period_month, gross_salary, bonuses, deductions,
+                                   ssk_employee, income_tax, stamp_tax, net_salary)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             RETURNING id, employee_id, period_year, period_month,
+                       gross_salary::FLOAT8 as gross_salary, net_salary::FLOAT8 as net_salary,
+                       status::TEXT, created_at",
+            &[&req.employee_id, &req.period_year, &req.period_month,
+              &gross, &bonuses, &deductions, &ssk_employee, &income_tax, &stamp_tax, &net],
         ).await?;
-
-        let mut total_gross = 0.0f64;
-        let total_deductions = 0.0f64;
-
-        let run_row = tx.query_one(
-            "INSERT INTO payroll_runs (period_start, period_end, created_by) VALUES ($1, $2, $3)
-             RETURNING id, period_start, period_end, status, total_gross, total_deductions, total_net, created_by, created_at, updated_at",
-            &[&req.period_start, &req.period_end, &user_id],
-        ).await?;
-        let run_id: Uuid = run_row.get("id");
-
-        for emp in &employees {
-            let emp_id: Uuid = emp.get("id");
-            let salary: f64 = emp.get::<_, f64>("base_salary");
-            total_gross += salary;
-            let net = salary - total_deductions;
-            tx.execute(
-                "INSERT INTO payroll_items (payroll_run_id, employee_id, gross_salary, deductions, net_salary)
-                 VALUES ($1, $2, $3, $4, $5)",
-                &[&run_id, &emp_id, &salary, &0.0f64, &net],
-            ).await?;
-        }
-
-        tx.execute(
-            "UPDATE payroll_runs SET total_gross = $1, total_net = $2 WHERE id = $3",
-            &[&total_gross, &(total_gross - total_deductions), &run_id],
-        ).await?;
-
-        tx.commit().await?;
-
-        Ok(PayrollRun {
-            id: run_id, period_start: run_row.get("period_start"),
-            period_end: run_row.get("period_end"), status: run_row.get("status"),
-            total_gross, total_deductions,
-            total_net: total_gross - total_deductions,
-            created_by: run_row.get("created_by"),
-            created_at: run_row.get("created_at"), updated_at: run_row.get("updated_at"),
+        Ok(PayrollRecord {
+            id: row.get("id"), employee_id: row.get("employee_id"),
+            period_year: row.get("period_year"), period_month: row.get("period_month"),
+            gross_salary: row.get::<_, f64>("gross_salary"),
+            net_salary: row.get::<_, f64>("net_salary"),
+            status: row.get("status"), created_at: row.get("created_at"),
         })
     }
 }

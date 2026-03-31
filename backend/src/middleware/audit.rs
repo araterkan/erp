@@ -44,19 +44,23 @@ pub async fn audit_trail(
         let username = claims.as_ref().map(|c| c.username.clone());
         let action = format!("{} {}", method, path);
 
+        let resource = path.split('/').nth(2).unwrap_or("unknown").to_string();
+        let details = serde_json::json!({
+            "method": method,
+            "status": status,
+            "response_time_ms": elapsed,
+            "user_agent": user_agent,
+            "username": username,
+        });
         let _ = client.execute(
-            "INSERT INTO audit_logs (user_id, username, action, method, path, status_code, ip_address, user_agent, response_time_ms)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            "INSERT INTO audit_log (user_id, action, resource, ip_address, details)
+             VALUES ($1, $2, $3, $4::inet, $5)",
             &[
                 &user_id,
-                &username,
                 &action,
-                &method,
-                &path,
-                &status,
+                &resource,
                 &ip,
-                &user_agent,
-                &elapsed,
+                &details,
             ],
         ).await;
     }

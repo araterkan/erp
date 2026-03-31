@@ -8,11 +8,11 @@ impl ReportService {
     pub async fn get_dashboard_stats(pool: &DbPool) -> AppResult<DashboardStats> {
         let client = pool.get().await?;
 
-        let cust_row = client.query_one("SELECT COUNT(*) as cnt FROM customers WHERE is_active = true", &[]).await?;
+        let cust_row = client.query_one("SELECT COUNT(*) as cnt FROM current_accounts WHERE is_active = true", &[]).await?;
         let prod_row = client.query_one("SELECT COUNT(*) as cnt FROM products WHERE is_active = true", &[]).await?;
         let emp_row = client.query_one("SELECT COUNT(*) as cnt FROM employees WHERE is_active = true", &[]).await?;
         let inv_row = client.query_one(
-            "SELECT COUNT(*) as cnt, COALESCE(SUM(total), 0.0) as total_amt, COALESCE(SUM(paid_amount), 0.0) as paid_amt
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0.0) as total_amt, COALESCE(SUM(paid_amount), 0.0) as paid_amt
              FROM invoices WHERE invoice_type = 'sale'",
             &[],
         ).await?;
@@ -35,8 +35,8 @@ impl ReportService {
         let client = pool.get().await?;
         let rows = client.query(
             "SELECT TO_CHAR(invoice_date, 'YYYY-MM') as period,
-                    COALESCE(SUM(total), 0.0) as total_sales,
-                    COALESCE(SUM(tax_amount), 0.0) as total_tax,
+                    COALESCE(SUM(total_amount), 0.0) as total_sales,
+                    COALESCE(SUM(vat_amount), 0.0) as total_tax,
                     COUNT(*) as invoice_count
              FROM invoices
              WHERE invoice_type = 'sale' AND status != 'cancelled'
